@@ -32,12 +32,10 @@ def predict():
             float(data.get('active', 1))
         ]
 
-        # ૩. Machine Learning Model દ્વારા સંભાવના (Probability) ગણવી
         input_array = np.array([features])
         prob = model.predict_proba(input_array)[0][1]  # Class 1 (Disease) ની શક્યતા
         risk_score = round(float(prob * 100), 1)
 
-        # ૪. મુખ્ય જોખમી પરિબળો (Contributing Risk Factors)
         factors = []
         if features[4] >= 130 or features[5] >= 80:
             factors.append(f"High Blood Pressure ({int(features[4])}/{int(features[5])} mmHg)")
