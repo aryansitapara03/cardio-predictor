@@ -92,15 +92,15 @@ const INITIAL_HISTORY = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('predictor'); 
-  // 1. DEFAULT DARK SCREEN / DARK THEME
   const [isDarkMode, setIsDarkMode] = useState(true);
 
-  // 2. NO DEFAULT VALUE FOR FEATURES (EMPTY BY DEFAULT)
+  // Form State & Touched / Unfocus state for error display
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [touched, setTouched] = useState({});
   const [patientName, setPatientName] = useState('');
   const [hasCalculated, setHasCalculated] = useState(false);
 
-  // 3. DEFAULT TOP SELECTED MODEL
+  // Available ML Models
   const [availableModels, setAvailableModels] = useState([
     { name: 'Gradient Boosting', accuracy: 73.01, precision: 75.17, recall: 68.23, f1: 71.53, is_best: true, speed: '12ms' },
     { name: 'Random Forest', accuracy: 72.70, precision: 75.55, recall: 66.63, f1: 70.81, speed: '18ms' },
@@ -121,7 +121,7 @@ export default function App() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [metricHighlight, setMetricHighlight] = useState(false);
 
-  // 4. PERMANENT LOCAL STORAGE FOR PATIENT RECORDS
+  // Permanent Local Storage for Patient History
   const [patientHistory, setPatientHistory] = useState(() => {
     try {
       const saved = localStorage.getItem('cardio_patient_history');
@@ -155,9 +155,14 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const handleBlur = (e) => {
+    const { name } = e.target;
+    setTouched((prev) => ({ ...prev, [name]: true }));
+  };
+
   // Field Validation & Empty Checks
   const isFormEmpty = useMemo(() => {
-    return !formData.age || !formData.height || !formData.weight || !formData.ap_hi || !formData.ap_lo;
+    return formData.age === '' || formData.height === '' || formData.weight === '' || formData.ap_hi === '' || formData.ap_lo === '';
   }, [formData]);
 
   const validationErrors = useMemo(() => {
@@ -286,9 +291,9 @@ export default function App() {
   };
 
   const getRiskDetails = (score) => {
-    if (!hasCalculated || isFormEmpty) {
+    if (!hasCalculated || isFormEmpty || hasErrors) {
       return {
-        level: 'Awaiting Inputs',
+        level: 'Awaiting Assessment',
         color: isDarkMode ? 'text-slate-400' : 'text-slate-500',
         bg: isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200',
         badge: isDarkMode ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300',
@@ -625,6 +630,7 @@ export default function App() {
                       onClick={() => {
                         setFormData(PRESETS[item.key]);
                         setPatientName(PRESETS[item.key].name);
+                        setTouched({ age: true, height: true, weight: true, ap_hi: true, ap_lo: true });
                         setActiveTab('predictor');
                         showToast(`Loaded ${item.title} profile`);
                       }}
@@ -680,12 +686,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* GLOBAL VALIDATION ERROR BANNER */}
+            {/* GLOBAL VALIDATION ERROR BANNER (ONBLUR / SUBMIT ERROR) */}
             {hasErrors && (
-              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-600 dark:text-rose-300 flex items-center gap-3 text-xs font-bold animate-pulse shadow-md">
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-600 dark:text-rose-300 flex items-center gap-3 text-xs font-bold shadow-md">
                 <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
                 <span>
-                  Validation Alert: Please correct the out-of-range inputs below before running the AI assessment.
+                  Validation Alert: Please correct out-of-range input values before running assessment.
                 </span>
               </div>
             )}
@@ -708,7 +714,7 @@ export default function App() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     
-                    {/* Typed Age Input (EMPTY BY DEFAULT) */}
+                    {/* Typed Age Input (Error triggers ONLY on UNFOCUS / onBlur) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
@@ -721,12 +727,13 @@ export default function App() {
                         placeholder="e.g. 45"
                         value={formData.age}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
-                          validationErrors.age ? t.inputError : t.input
+                          touched.age && validationErrors.age ? t.inputError : t.input
                         }`}
                       />
-                      {validationErrors.age && (
-                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                      {touched.age && validationErrors.age && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.age}
                         </p>
                       )}
@@ -758,7 +765,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Typed Height Input (EMPTY BY DEFAULT) */}
+                    {/* Typed Height Input (Error triggers ONLY on UNFOCUS / onBlur) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Height (cm) <span className="text-[10px] text-slate-400">(50 - 250)</span>
@@ -769,18 +776,19 @@ export default function App() {
                         placeholder="e.g. 175"
                         value={formData.height}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
-                          validationErrors.height ? t.inputError : t.input
+                          touched.height && validationErrors.height ? t.inputError : t.input
                         }`}
                       />
-                      {validationErrors.height && (
-                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                      {touched.height && validationErrors.height && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.height}
                         </p>
                       )}
                     </div>
 
-                    {/* Typed Weight Input (EMPTY BY DEFAULT) */}
+                    {/* Typed Weight Input (Error triggers ONLY on UNFOCUS / onBlur) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
@@ -794,18 +802,19 @@ export default function App() {
                         placeholder="e.g. 75"
                         value={formData.weight}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
-                          validationErrors.weight ? t.inputError : t.input
+                          touched.weight && validationErrors.weight ? t.inputError : t.input
                         }`}
                       />
-                      {validationErrors.weight && (
-                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                      {touched.weight && validationErrors.weight && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.weight}
                         </p>
                       )}
                     </div>
 
-                    {/* Typed Systolic BP Input (EMPTY BY DEFAULT) */}
+                    {/* Typed Systolic BP Input (Error triggers ONLY on UNFOCUS / onBlur) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Systolic BP (ap_hi) <span className="text-[10px] text-slate-400">(70 - 240 mmHg)</span>
@@ -816,18 +825,19 @@ export default function App() {
                         placeholder="e.g. 120"
                         value={formData.ap_hi}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
-                          validationErrors.ap_hi ? t.inputError : t.input
+                          touched.ap_hi && validationErrors.ap_hi ? t.inputError : t.input
                         }`}
                       />
-                      {validationErrors.ap_hi && (
-                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                      {touched.ap_hi && validationErrors.ap_hi && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.ap_hi}
                         </p>
                       )}
                     </div>
 
-                    {/* Typed Diastolic BP Input (EMPTY BY DEFAULT) */}
+                    {/* Typed Diastolic BP Input (Error triggers ONLY on UNFOCUS / onBlur) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Diastolic BP (ap_lo) <span className="text-[10px] text-slate-400">(40 - 160 mmHg)</span>
@@ -838,12 +848,13 @@ export default function App() {
                         placeholder="e.g. 80"
                         value={formData.ap_lo}
                         onChange={handleChange}
+                        onBlur={handleBlur}
                         className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
-                          validationErrors.ap_lo ? t.inputError : t.input
+                          touched.ap_lo && validationErrors.ap_lo ? t.inputError : t.input
                         }`}
                       />
-                      {validationErrors.ap_lo && (
-                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                      {touched.ap_lo && validationErrors.ap_lo && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1 animate-fadeIn">
                           <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.ap_lo}
                         </p>
                       )}
@@ -885,33 +896,65 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* LIFESTYLE TOGGLES */}
-                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                    <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-3`}>
-                      Lifestyle Markers
+                  {/* LIFESTYLE MARKERS WITH EXPLICIT YES / NO TICK INDICATORS */}
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
+                      Lifestyle Markers (Clear Yes / No Selection)
                     </label>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                       {[
                         { key: 'smoke', label: 'Smoker', icon: Cigarette },
-                        { key: 'alco', label: 'Alcohol', icon: Wine },
-                        { key: 'active', label: 'Active', icon: Dumbbell }
+                        { key: 'alco', label: 'Alcohol Intake', icon: Wine },
+                        { key: 'active', label: 'Physical Activity', icon: Dumbbell }
                       ].map((item) => {
                         const Icon = item.icon;
-                        const active = formData[item.key] === 1;
+                        const isYes = formData[item.key] === 1;
                         return (
-                          <button
+                          <div 
                             key={item.key}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, [item.key]: active ? 0 : 1 })}
-                            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-xs font-bold transition-all ${
-                              active
-                                ? 'bg-rose-500 text-white border-rose-500 shadow-md shadow-rose-500/20'
-                                : isDarkMode ? 'bg-slate-950 text-slate-400 border-slate-800' : 'bg-slate-50 text-slate-700 border-slate-300'
+                            className={`p-3 rounded-2xl border flex flex-col justify-between gap-2.5 transition-all ${
+                              isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-50 border-slate-200'
                             }`}
                           >
-                            <Icon className="w-4 h-4" />
-                            {item.label}
-                          </button>
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              <div className="flex items-center gap-2">
+                                <Icon className="w-4 h-4 text-indigo-400" />
+                                <span className={t.heading}>{item.label}</span>
+                              </div>
+                              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                                isYes
+                                  ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700'
+                              }`}>
+                                {isYes ? '✓ YES' : '✗ NO'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, [item.key]: 1 })}
+                                className={`py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  isYes
+                                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25 ring-2 ring-emerald-500/30'
+                                    : isDarkMode ? 'bg-slate-900 text-slate-400 hover:text-slate-200' : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-300'
+                                }`}
+                              >
+                                <Check className="w-3.5 h-3.5" /> Yes
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFormData({ ...formData, [item.key]: 0 })}
+                                className={`py-1.5 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  !isYes
+                                    ? 'bg-rose-500 text-white shadow-md shadow-rose-500/25 ring-2 ring-rose-500/30'
+                                    : isDarkMode ? 'bg-slate-900 text-slate-400 hover:text-slate-200' : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-300'
+                                }`}
+                              >
+                                <X className="w-3.5 h-3.5" /> No
+                              </button>
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -951,7 +994,10 @@ export default function App() {
 
                     <div className="w-full sm:w-auto flex items-end">
                       <button
-                        onClick={() => fetchPredictionFromBackend(formData, selectedModel)}
+                        onClick={() => {
+                          setTouched({ age: true, height: true, weight: true, ap_hi: true, ap_lo: true });
+                          fetchPredictionFromBackend(formData, selectedModel);
+                        }}
                         disabled={hasErrors || isFormEmpty || isCalculating}
                         className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
                           hasErrors || isFormEmpty
@@ -996,7 +1042,7 @@ export default function App() {
                   <div className="text-center py-4 space-y-2">
                     <div className="relative inline-flex items-center justify-center">
                       <span className={`text-6xl md:text-7xl font-extrabold tracking-tight ${riskInfo.color}`}>
-                        {!hasCalculated || isFormEmpty ? '--' : `${riskScore.toFixed(1)}%`}
+                        {!hasCalculated || isFormEmpty || hasErrors ? '--' : `${riskScore.toFixed(1)}%`}
                       </span>
                     </div>
                     <p className={`text-xs sm:text-sm font-semibold max-w-xs mx-auto ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
@@ -1014,7 +1060,7 @@ export default function App() {
                     <div className={`w-full h-3 rounded-full overflow-hidden p-0.5 border ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200 border-slate-300'}`}>
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${riskInfo.bar}`}
-                        style={{ width: `${!hasCalculated || isFormEmpty ? 0 : Math.min(Math.max(riskScore, 5), 100)}%` }}
+                        style={{ width: `${!hasCalculated || isFormEmpty || hasErrors ? 0 : Math.min(Math.max(riskScore, 5), 100)}%` }}
                       />
                     </div>
                   </div>
