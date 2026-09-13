@@ -68,6 +68,20 @@ const PRESETS = {
   }
 };
 
+const EMPTY_FORM = {
+  age: '',
+  gender: 1,
+  height: '',
+  weight: '',
+  ap_hi: '',
+  ap_lo: '',
+  cholesterol: 1,
+  gluc: 1,
+  smoke: 0,
+  alco: 0,
+  active: 1
+};
+
 const INITIAL_HISTORY = [
   { id: 'REC-901', name: 'Eleanor Vance', date: '2026-09-12', age: 62, gender: 1, ap_hi: 160, ap_lo: 98, score: 78.4, level: 'High Risk', model: 'Gradient Boosting' },
   { id: 'REC-902', name: 'Marcus Sterling', date: '2026-09-11', age: 44, gender: 2, ap_hi: 128, ap_lo: 82, score: 42.1, level: 'Moderate Risk', model: 'Random Forest' },
@@ -78,10 +92,15 @@ const INITIAL_HISTORY = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('predictor'); 
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [formData, setFormData] = useState(PRESETS.MEDIUM_RISK);
-  const [patientName, setPatientName] = useState('Robert Vance');
+  // 1. DEFAULT DARK SCREEN / DARK THEME
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
+  // 2. NO DEFAULT VALUE FOR FEATURES (EMPTY BY DEFAULT)
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [patientName, setPatientName] = useState('');
+  const [hasCalculated, setHasCalculated] = useState(false);
+
+  // 3. DEFAULT TOP SELECTED MODEL
   const [availableModels, setAvailableModels] = useState([
     { name: 'Gradient Boosting', accuracy: 73.01, precision: 75.17, recall: 68.23, f1: 71.53, is_best: true, speed: '12ms' },
     { name: 'Random Forest', accuracy: 72.70, precision: 75.55, recall: 66.63, f1: 70.81, speed: '18ms' },
@@ -95,15 +114,35 @@ export default function App() {
   const [selectedModel, setSelectedModel] = useState('Gradient Boosting');
   const [bestModelName, setBestModelName] = useState('Gradient Boosting');
 
-  const [riskScore, setRiskScore] = useState(48.5);
+  const [riskScore, setRiskScore] = useState(0);
   const [riskFactors, setRiskFactors] = useState([]);
   const [modelMetrics, setModelMetrics] = useState({ accuracy: 73.01, precision: 75.17, recall: 68.23, f1: 71.53 });
   const [apiConnected, setApiConnected] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [metricHighlight, setMetricHighlight] = useState(false);
 
-  // History & Record State
-  const [patientHistory, setPatientHistory] = useState(INITIAL_HISTORY);
+  // 4. PERMANENT LOCAL STORAGE FOR PATIENT RECORDS
+  const [patientHistory, setPatientHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cardio_patient_history');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to load patient history from localStorage:', e);
+    }
+    return INITIAL_HISTORY;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('cardio_patient_history', JSON.stringify(patientHistory));
+    } catch (e) {
+      console.error('Failed to persist patient history:', e);
+    }
+  }, [patientHistory]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [historyFilter, setHistoryFilter] = useState('ALL');
   const [selectedRecordModal, setSelectedRecordModal] = useState(null);
@@ -116,31 +155,39 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Field Range Validation Errors
+  // Field Validation & Empty Checks
+  const isFormEmpty = useMemo(() => {
+    return !formData.age || !formData.height || !formData.weight || !formData.ap_hi || !formData.ap_lo;
+  }, [formData]);
+
   const validationErrors = useMemo(() => {
     const errs = {};
+    if (formData.age === '' && formData.height === '' && formData.weight === '' && formData.ap_hi === '' && formData.ap_lo === '') {
+      return errs;
+    }
+
     const age = Number(formData.age);
     const height = Number(formData.height);
     const weight = Number(formData.weight);
     const ap_hi = Number(formData.ap_hi);
     const ap_lo = Number(formData.ap_lo);
 
-    if (isNaN(age) || age < 18 || age > 100) {
+    if (formData.age !== '' && (isNaN(age) || age < 18 || age > 100)) {
       errs.age = 'Age must be between 18 and 100 years.';
     }
-    if (isNaN(height) || height < 50 || height > 250) {
+    if (formData.height !== '' && (isNaN(height) || height < 50 || height > 250)) {
       errs.height = 'Height must be between 50 and 250 cm.';
     }
-    if (isNaN(weight) || weight < 20 || weight > 250) {
+    if (formData.weight !== '' && (isNaN(weight) || weight < 20 || weight > 250)) {
       errs.weight = 'Weight must be between 20 and 250 kg.';
     }
-    if (isNaN(ap_hi) || ap_hi < 70 || ap_hi > 240) {
+    if (formData.ap_hi !== '' && (isNaN(ap_hi) || ap_hi < 70 || ap_hi > 240)) {
       errs.ap_hi = 'Systolic BP must be between 70 and 240 mmHg.';
     }
-    if (isNaN(ap_lo) || ap_lo < 40 || ap_lo > 160) {
+    if (formData.ap_lo !== '' && (isNaN(ap_lo) || ap_lo < 40 || ap_lo > 160)) {
       errs.ap_lo = 'Diastolic BP must be between 40 and 160 mmHg.';
     }
-    if (!errs.ap_hi && !errs.ap_lo && ap_lo >= ap_hi) {
+    if (formData.ap_hi !== '' && formData.ap_lo !== '' && !errs.ap_hi && !errs.ap_lo && ap_lo >= ap_hi) {
       errs.ap_lo = 'Diastolic BP must be lower than Systolic BP.';
     }
 
@@ -181,7 +228,7 @@ export default function App() {
   }, [API_BASE]);
 
   const fetchPredictionFromBackend = async (dataToSend, modelName) => {
-    if (hasErrors) return; // Block calculation if input values are out of range
+    if (hasErrors || isFormEmpty) return;
     setIsCalculating(true);
     try {
       const response = await fetch(`${API_BASE}/predict`, {
@@ -200,13 +247,14 @@ export default function App() {
           if (found) setModelMetrics({ accuracy: found.accuracy, precision: found.precision, recall: found.recall, f1: found.f1 });
         }
         setApiConnected(true);
+        setHasCalculated(true);
       }
     } catch (err) {
       let score = 18;
-      if (dataToSend.ap_hi > 140 || dataToSend.ap_lo > 90) score += 26;
+      if (Number(dataToSend.ap_hi) > 140 || Number(dataToSend.ap_lo) > 90) score += 26;
       if (dataToSend.cholesterol > 1) score += 14 * dataToSend.cholesterol;
       if (dataToSend.smoke) score += 12;
-      if (dataToSend.age > 50) score += 10;
+      if (Number(dataToSend.age) > 50) score += 10;
       if (dataToSend.active === 0) score += 8;
       
       const modelBias = {
@@ -223,20 +271,14 @@ export default function App() {
       
       setRiskScore(score);
       setApiConnected(false);
+      setHasCalculated(true);
     } finally {
       setTimeout(() => setIsCalculating(false), 150);
     }
   };
 
-  useEffect(() => {
-    if (!hasErrors) {
-      fetchPredictionFromBackend(formData, selectedModel);
-    }
-  }, [formData, selectedModel, hasErrors]);
-
   const handleChange = (e) => {
     const { name, value } = e.target;
-    // Allow user to freely type any string/number into the input
     setFormData((prev) => ({
       ...prev,
       [name]: value
@@ -244,6 +286,16 @@ export default function App() {
   };
 
   const getRiskDetails = (score) => {
+    if (!hasCalculated || isFormEmpty) {
+      return {
+        level: 'Awaiting Inputs',
+        color: isDarkMode ? 'text-slate-400' : 'text-slate-500',
+        bg: isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-200',
+        badge: isDarkMode ? 'bg-slate-800 text-slate-400 border-slate-700' : 'bg-slate-200 text-slate-700 border-slate-300',
+        bar: 'bg-slate-600',
+        desc: 'Enter patient biometric values above and click "Run Assessment".'
+      };
+    }
     if (score < 30) {
       return { 
         level: 'Low Risk', 
@@ -275,6 +327,7 @@ export default function App() {
   };
 
   const getBloodPressureCategory = (systolic, diastolic) => {
+    if (!systolic || !diastolic) return { label: 'Pending Input', color: 'text-slate-400' };
     if (systolic < 120 && diastolic < 80) return { label: 'Normal BP', color: isDarkMode ? 'text-emerald-400' : 'text-emerald-700' };
     if (systolic <= 129 && diastolic < 80) return { label: 'Elevated BP', color: isDarkMode ? 'text-amber-300' : 'text-amber-700' };
     if (systolic <= 139 || diastolic <= 89) return { label: 'Stage 1 Hypertension', color: isDarkMode ? 'text-amber-400' : 'text-amber-800' };
@@ -283,6 +336,10 @@ export default function App() {
   };
 
   const saveCurrentAssessment = () => {
+    if (isFormEmpty) {
+      showToast('Please fill in all biometric input fields before saving.', 'error');
+      return;
+    }
     if (hasErrors) {
       showToast('Cannot save record: Please fix out-of-range input values first.', 'error');
       return;
@@ -301,12 +358,12 @@ export default function App() {
       model: selectedModel
     };
     setPatientHistory([newRecord, ...patientHistory]);
-    showToast(`Assessment saved for ${newRecord.name}!`, 'success');
+    showToast(`Assessment permanently saved for ${newRecord.name}!`, 'success');
   };
 
   const riskInfo = getRiskDetails(riskScore);
   const heightM = Number(formData.height) / 100;
-  const bmi = (heightM > 0 ? (Number(formData.weight) / (heightM * heightM)).toFixed(1) : '0.0');
+  const bmi = (heightM > 0 && formData.weight ? (Number(formData.weight) / (heightM * heightM)).toFixed(1) : '0.0');
   const bpCategory = getBloodPressureCategory(Number(formData.ap_hi), Number(formData.ap_lo));
 
   // Filtered Patient History
@@ -328,7 +385,7 @@ export default function App() {
     heading: isDarkMode ? 'text-white' : 'text-slate-900',
     subHeading: isDarkMode ? 'text-slate-400' : 'text-slate-600',
     input: isDarkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-rose-500' : 'bg-white border-slate-300 text-slate-900 focus:border-rose-500 shadow-sm',
-    inputError: 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 text-rose-600 font-bold',
+    inputError: 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 text-rose-500 font-bold',
     tableHeader: isDarkMode ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-700',
     tableRow: isDarkMode ? 'hover:bg-slate-800/40 border-slate-800/80' : 'hover:bg-slate-50 border-slate-200/80',
     buttonSecondary: isDarkMode ? 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800 shadow-sm'
@@ -468,10 +525,10 @@ export default function App() {
                 {/* STATS METRIC CARDS */}
                 <div className="grid grid-cols-2 gap-4 shrink-0 lg:w-80">
                   <div className={`p-4 rounded-2xl border ${t.cardInner} space-y-1`}>
-                    <div className={`text-xs ${t.subHeading} font-medium`}>Scans Completed</div>
-                    <div className={`text-2xl font-extrabold ${t.heading}`}>1,482</div>
+                    <div className={`text-xs ${t.subHeading} font-medium`}>Saved Records</div>
+                    <div className={`text-2xl font-extrabold ${t.heading}`}>{patientHistory.length}</div>
                     <div className="text-[11px] text-emerald-500 font-bold flex items-center gap-1">
-                      <TrendingUp className="w-3 h-3" /> +14% this month
+                      <Check className="w-3 h-3" /> Permanent Storage
                     </div>
                   </div>
                   <div className={`p-4 rounded-2xl border ${t.cardInner} space-y-1`}>
@@ -480,9 +537,9 @@ export default function App() {
                     <div className={`text-[11px] ${t.subHeading}`}>{selectedModel}</div>
                   </div>
                   <div className={`p-4 rounded-2xl border ${t.cardInner} space-y-1`}>
-                    <div className={`text-xs ${t.subHeading} font-medium`}>High Risk Rate</div>
-                    <div className="text-2xl font-extrabold text-rose-500">28.4%</div>
-                    <div className="text-[11px] text-rose-500 font-semibold">Requires review</div>
+                    <div className={`text-xs ${t.subHeading} font-medium`}>Top Classifier</div>
+                    <div className="text-xl font-extrabold text-rose-500 truncate">{bestModelName}</div>
+                    <div className="text-[11px] text-rose-500 font-semibold">Active Selection</div>
                   </div>
                   <div className={`p-4 rounded-2xl border ${t.cardInner} space-y-1`}>
                     <div className={`text-xs ${t.subHeading} font-medium`}>Avg Latency</div>
@@ -507,7 +564,7 @@ export default function App() {
                     onClick={() => setActiveTab('history')}
                     className="text-xs text-rose-500 font-bold hover:underline flex items-center gap-1"
                   >
-                    View All Logs <ChevronRight className="w-3.5 h-3.5" />
+                    View All Logs ({patientHistory.length}) <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
@@ -598,6 +655,7 @@ export default function App() {
                   <span className={`text-xs ${t.subHeading} uppercase tracking-wider font-bold`}>Patient Name:</span>
                   <input
                     type="text"
+                    placeholder="Enter Patient Name..."
                     value={patientName}
                     onChange={(e) => setPatientName(e.target.value)}
                     className={`ml-2 rounded-xl px-3 py-1 text-xs font-bold focus:outline-none ${t.input}`}
@@ -650,7 +708,7 @@ export default function App() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     
-                    {/* Typed Age Input */}
+                    {/* Typed Age Input (EMPTY BY DEFAULT) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
@@ -700,7 +758,7 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Typed Height Input */}
+                    {/* Typed Height Input (EMPTY BY DEFAULT) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Height (cm) <span className="text-[10px] text-slate-400">(50 - 250)</span>
@@ -722,7 +780,7 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Typed Weight Input */}
+                    {/* Typed Weight Input (EMPTY BY DEFAULT) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
@@ -747,7 +805,7 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Typed Systolic BP Input */}
+                    {/* Typed Systolic BP Input (EMPTY BY DEFAULT) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Systolic BP (ap_hi) <span className="text-[10px] text-slate-400">(70 - 240 mmHg)</span>
@@ -769,7 +827,7 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Typed Diastolic BP Input */}
+                    {/* Typed Diastolic BP Input (EMPTY BY DEFAULT) */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
                         Diastolic BP (ap_lo) <span className="text-[10px] text-slate-400">(40 - 160 mmHg)</span>
@@ -863,7 +921,7 @@ export default function App() {
                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="w-full sm:w-auto flex-1">
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Machine Learning Model
+                        Selected Machine Learning Model
                       </label>
                       <select
                         value={selectedModel}
@@ -894,9 +952,9 @@ export default function App() {
                     <div className="w-full sm:w-auto flex items-end">
                       <button
                         onClick={() => fetchPredictionFromBackend(formData, selectedModel)}
-                        disabled={hasErrors || isCalculating}
+                        disabled={hasErrors || isFormEmpty || isCalculating}
                         className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
-                          hasErrors 
+                          hasErrors || isFormEmpty
                             ? 'bg-slate-400 dark:bg-slate-800 text-slate-200 cursor-not-allowed border border-slate-300 opacity-60' 
                             : 'bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white shadow-lg shadow-rose-500/30'
                         }`}
@@ -938,11 +996,11 @@ export default function App() {
                   <div className="text-center py-4 space-y-2">
                     <div className="relative inline-flex items-center justify-center">
                       <span className={`text-6xl md:text-7xl font-extrabold tracking-tight ${riskInfo.color}`}>
-                        {hasErrors ? '--' : `${riskScore.toFixed(1)}%`}
+                        {!hasCalculated || isFormEmpty ? '--' : `${riskScore.toFixed(1)}%`}
                       </span>
                     </div>
                     <p className={`text-xs sm:text-sm font-semibold max-w-xs mx-auto ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {hasErrors ? 'Please enter valid biometric inputs within clinical bounds.' : riskInfo.desc}
+                      {riskInfo.desc}
                     </p>
                   </div>
 
@@ -956,7 +1014,7 @@ export default function App() {
                     <div className={`w-full h-3 rounded-full overflow-hidden p-0.5 border ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200 border-slate-300'}`}>
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${riskInfo.bar}`}
-                        style={{ width: `${hasErrors ? 0 : Math.min(Math.max(riskScore, 5), 100)}%` }}
+                        style={{ width: `${!hasCalculated || isFormEmpty ? 0 : Math.min(Math.max(riskScore, 5), 100)}%` }}
                       />
                     </div>
                   </div>
@@ -1037,7 +1095,7 @@ export default function App() {
                   <History className="w-6 h-6 text-rose-500" /> Patient Assessment Log
                 </h2>
                 <p className={`text-sm ${t.subHeading} mt-1`}>
-                  Manage saved cardiovascular diagnostic reports and review past clinical assessments.
+                  Manage saved cardiovascular diagnostic reports (permanently saved in browser storage).
                 </p>
               </div>
 
@@ -1139,7 +1197,8 @@ export default function App() {
                           </button>
                           <button
                             onClick={() => {
-                              setPatientHistory(patientHistory.filter(h => h.id !== item.id));
+                              const updated = patientHistory.filter(h => h.id !== item.id);
+                              setPatientHistory(updated);
                               showToast(`Deleted record ${item.id}`);
                             }}
                             className={`p-1.5 rounded-lg transition-colors ${isDarkMode ? 'text-slate-400 hover:text-rose-400 hover:bg-slate-800' : 'text-slate-500 hover:text-rose-600 hover:bg-slate-200'}`}
@@ -1256,7 +1315,7 @@ export default function App() {
                 </div>
                 <div className={`text-3xl font-extrabold ${t.heading}`}>{bmi} <span className={`text-xs ${t.subHeading} font-normal`}>kg/m²</span></div>
                 <p className={`text-xs ${t.subHeading} font-medium`}>
-                  {Number(bmi) < 18.5 ? 'Underweight' : Number(bmi) < 25 ? 'Normal Weight' : Number(bmi) < 30 ? 'Overweight' : 'Obesity'}
+                  {!formData.weight || !formData.height ? 'Enter Height & Weight' : Number(bmi) < 18.5 ? 'Underweight' : Number(bmi) < 25 ? 'Normal Weight' : Number(bmi) < 30 ? 'Overweight' : 'Obesity'}
                 </p>
               </div>
 
@@ -1266,7 +1325,7 @@ export default function App() {
                   <Activity className="w-5 h-5" /> Mean Arterial Pressure (MAP)
                 </div>
                 <div className={`text-3xl font-extrabold ${t.heading}`}>
-                  {(((2 * Number(formData.ap_lo)) + Number(formData.ap_hi)) / 3).toFixed(1)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
+                  {!formData.ap_hi || !formData.ap_lo ? '0.0' : (((2 * Number(formData.ap_lo)) + Number(formData.ap_hi)) / 3).toFixed(1)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
                 </div>
                 <p className={`text-xs ${t.subHeading} font-medium`}>Target range: 70 - 100 mmHg for organ perfusion.</p>
               </div>
@@ -1277,7 +1336,7 @@ export default function App() {
                   <Heart className="w-5 h-5" /> Pulse Pressure
                 </div>
                 <div className={`text-3xl font-extrabold ${t.heading}`}>
-                  {Number(formData.ap_hi) - Number(formData.ap_lo)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
+                  {!formData.ap_hi || !formData.ap_lo ? '0' : Number(formData.ap_hi) - Number(formData.ap_lo)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
                 </div>
                 <p className={`text-xs ${t.subHeading} font-medium`}>Normal range: 40 - 60 mmHg. High values indicate arterial stiffness.</p>
               </div>
