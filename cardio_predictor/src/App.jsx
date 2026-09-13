@@ -43,7 +43,8 @@ import {
   PieChart,
   History,
   Heart,
-  Scale
+  Scale,
+  AlertCircle
 } from 'lucide-react';
 
 const PRESETS = {
@@ -115,6 +116,39 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Field Range Validation Errors
+  const validationErrors = useMemo(() => {
+    const errs = {};
+    const age = Number(formData.age);
+    const height = Number(formData.height);
+    const weight = Number(formData.weight);
+    const ap_hi = Number(formData.ap_hi);
+    const ap_lo = Number(formData.ap_lo);
+
+    if (isNaN(age) || age < 18 || age > 100) {
+      errs.age = 'Age must be between 18 and 100 years.';
+    }
+    if (isNaN(height) || height < 50 || height > 250) {
+      errs.height = 'Height must be between 50 and 250 cm.';
+    }
+    if (isNaN(weight) || weight < 20 || weight > 250) {
+      errs.weight = 'Weight must be between 20 and 250 kg.';
+    }
+    if (isNaN(ap_hi) || ap_hi < 70 || ap_hi > 240) {
+      errs.ap_hi = 'Systolic BP must be between 70 and 240 mmHg.';
+    }
+    if (isNaN(ap_lo) || ap_lo < 40 || ap_lo > 160) {
+      errs.ap_lo = 'Diastolic BP must be between 40 and 160 mmHg.';
+    }
+    if (!errs.ap_hi && !errs.ap_lo && ap_lo >= ap_hi) {
+      errs.ap_lo = 'Diastolic BP must be lower than Systolic BP.';
+    }
+
+    return errs;
+  }, [formData]);
+
+  const hasErrors = Object.keys(validationErrors).length > 0;
+
   // Sync modelMetrics dynamically whenever selectedModel or availableModels change
   useEffect(() => {
     const currentModelData = availableModels.find((m) => m.name === selectedModel);
@@ -125,7 +159,6 @@ export default function App() {
         recall: currentModelData.recall,
         f1: currentModelData.f1
       });
-      // Flash highlight animation on metrics box
       setMetricHighlight(true);
       const timer = setTimeout(() => setMetricHighlight(false), 600);
       return () => clearTimeout(timer);
@@ -148,6 +181,7 @@ export default function App() {
   }, [API_BASE]);
 
   const fetchPredictionFromBackend = async (dataToSend, modelName) => {
+    if (hasErrors) return; // Block calculation if input values are out of range
     setIsCalculating(true);
     try {
       const response = await fetch(`${API_BASE}/predict`, {
@@ -168,7 +202,6 @@ export default function App() {
         setApiConnected(true);
       }
     } catch (err) {
-      // Calculate realistic client-side fallback score if backend offline
       let score = 18;
       if (dataToSend.ap_hi > 140 || dataToSend.ap_lo > 90) score += 26;
       if (dataToSend.cholesterol > 1) score += 14 * dataToSend.cholesterol;
@@ -176,7 +209,6 @@ export default function App() {
       if (dataToSend.age > 50) score += 10;
       if (dataToSend.active === 0) score += 8;
       
-      // Add slight model variation bias
       const modelBias = {
         'Gradient Boosting': 0,
         'Random Forest': 1.2,
@@ -197,34 +229,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchPredictionFromBackend(formData, selectedModel);
-  }, [formData, selectedModel]);
+    if (!hasErrors) {
+      fetchPredictionFromBackend(formData, selectedModel);
+    }
+  }, [formData, selectedModel, hasErrors]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    let val = parseFloat(value);
-    if (isNaN(val)) val = 0;
-
-    // Prevent negative values completely
-    val = Math.max(0, val);
-
-    setFormData((prev) => {
-      let updated = { ...prev, [name]: val };
-      
-      // Enforce clinical realistic bounds
-      if (name === 'age') updated.age = Math.min(Math.max(val, 18), 100);
-      if (name === 'height') updated.height = Math.min(Math.max(val, 50), 250);
-      if (name === 'weight') updated.weight = Math.min(Math.max(val, 20), 250);
-      if (name === 'ap_hi') {
-        updated.ap_hi = Math.min(Math.max(val, 70), 240);
-        if (updated.ap_hi <= updated.ap_lo) updated.ap_lo = Math.max(40, updated.ap_hi - 10);
-      }
-      if (name === 'ap_lo') {
-        updated.ap_lo = Math.min(Math.max(val, 40), 160);
-        if (updated.ap_lo >= updated.ap_hi) updated.ap_hi = Math.min(240, updated.ap_lo + 10);
-      }
-      return updated;
-    });
+    // Allow user to freely type any string/number into the input
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
   const getRiskDetails = (score) => {
@@ -267,6 +283,10 @@ export default function App() {
   };
 
   const saveCurrentAssessment = () => {
+    if (hasErrors) {
+      showToast('Cannot save record: Please fix out-of-range input values first.', 'error');
+      return;
+    }
     const riskInfo = getRiskDetails(riskScore);
     const newRecord = {
       id: `REC-${Math.floor(100 + Math.random() * 900)}`,
@@ -285,8 +305,9 @@ export default function App() {
   };
 
   const riskInfo = getRiskDetails(riskScore);
-  const bmi = (formData.weight / ((formData.height / 100) ** 2)).toFixed(1);
-  const bpCategory = getBloodPressureCategory(formData.ap_hi, formData.ap_lo);
+  const heightM = Number(formData.height) / 100;
+  const bmi = (heightM > 0 ? (Number(formData.weight) / (heightM * heightM)).toFixed(1) : '0.0');
+  const bpCategory = getBloodPressureCategory(Number(formData.ap_hi), Number(formData.ap_lo));
 
   // Filtered Patient History
   const filteredHistory = useMemo(() => {
@@ -307,6 +328,7 @@ export default function App() {
     heading: isDarkMode ? 'text-white' : 'text-slate-900',
     subHeading: isDarkMode ? 'text-slate-400' : 'text-slate-600',
     input: isDarkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-rose-500' : 'bg-white border-slate-300 text-slate-900 focus:border-rose-500 shadow-sm',
+    inputError: 'border-rose-500 ring-2 ring-rose-500/20 bg-rose-50/10 text-rose-600 font-bold',
     tableHeader: isDarkMode ? 'bg-slate-950/80 border-slate-800 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-700',
     tableRow: isDarkMode ? 'hover:bg-slate-800/40 border-slate-800/80' : 'hover:bg-slate-50 border-slate-200/80',
     buttonSecondary: isDarkMode ? 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800 shadow-sm'
@@ -321,9 +343,11 @@ export default function App() {
           <div className={`px-4 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 text-sm font-semibold ${
             toastMessage.type === 'success' 
               ? isDarkMode ? 'bg-emerald-950/90 border-emerald-500/50 text-emerald-200' : 'bg-emerald-900 border-emerald-700 text-white'
+              : toastMessage.type === 'error'
+              ? 'bg-rose-900 border-rose-700 text-white'
               : isDarkMode ? 'bg-slate-900/90 border-slate-700 text-white' : 'bg-slate-900 text-white'
           }`}>
-            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+            {toastMessage.type === 'error' ? <AlertCircle className="w-5 h-5 text-rose-300" /> : <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
             <span>{toastMessage.text}</span>
           </div>
         </div>
@@ -598,6 +622,16 @@ export default function App() {
               </div>
             </div>
 
+            {/* GLOBAL VALIDATION ERROR BANNER */}
+            {hasErrors && (
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/40 text-rose-600 dark:text-rose-300 flex items-center gap-3 text-xs font-bold animate-pulse shadow-md">
+                <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
+                <span>
+                  Validation Alert: Please correct the out-of-range inputs below before running the AI assessment.
+                </span>
+              </div>
+            )}
+
             {/* DASHBOARD GRID */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               
@@ -615,23 +649,32 @@ export default function App() {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Age */}
+                    
+                    {/* Typed Age Input */}
                     <div>
-                      <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-2`}>
-                        Age (Years): <span className={`${t.heading} font-extrabold`}>{formData.age}</span>
-                      </label>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
+                          Age (Years) <span className="text-[10px] text-slate-400">(18 - 100)</span>
+                        </label>
+                      </div>
                       <input
-                        type="range"
+                        type="number"
                         name="age"
-                        min="18"
-                        max="85"
+                        placeholder="e.g. 45"
                         value={formData.age}
                         onChange={handleChange}
-                        className="w-full h-2 bg-slate-300 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500"
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
+                          validationErrors.age ? t.inputError : t.input
+                        }`}
                       />
+                      {validationErrors.age && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.age}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Gender */}
+                    {/* Gender Selection */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-2`}>
                         Biological Gender
@@ -657,71 +700,95 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Height */}
+                    {/* Typed Height Input */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Height (cm) <span className="text-[10px] text-slate-400">(50-250)</span>
+                        Height (cm) <span className="text-[10px] text-slate-400">(50 - 250)</span>
                       </label>
                       <input
                         type="number"
                         name="height"
-                        min="50"
-                        max="250"
+                        placeholder="e.g. 175"
                         value={formData.height}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
+                          validationErrors.height ? t.inputError : t.input
+                        }`}
                       />
+                      {validationErrors.height && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.height}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Weight */}
+                    {/* Typed Weight Input */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
-                          Weight (kg) <span className="text-[10px] text-slate-400">(20-250)</span>
+                          Weight (kg) <span className="text-[10px] text-slate-400">(20 - 250)</span>
                         </label>
                         <span className="text-xs text-indigo-500 font-bold">BMI: {bmi}</span>
                       </div>
                       <input
                         type="number"
                         name="weight"
-                        min="20"
-                        max="250"
+                        placeholder="e.g. 75"
                         value={formData.weight}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
+                          validationErrors.weight ? t.inputError : t.input
+                        }`}
                       />
+                      {validationErrors.weight && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.weight}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Systolic BP */}
+                    {/* Typed Systolic BP Input */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Systolic BP (ap_hi) <span className="text-[10px] text-slate-400">(70-240 mmHg)</span>
+                        Systolic BP (ap_hi) <span className="text-[10px] text-slate-400">(70 - 240 mmHg)</span>
                       </label>
                       <input
                         type="number"
                         name="ap_hi"
-                        min="70"
-                        max="240"
+                        placeholder="e.g. 120"
                         value={formData.ap_hi}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
+                          validationErrors.ap_hi ? t.inputError : t.input
+                        }`}
                       />
+                      {validationErrors.ap_hi && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.ap_hi}
+                        </p>
+                      )}
                     </div>
 
-                    {/* Diastolic BP */}
+                    {/* Typed Diastolic BP Input */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Diastolic BP (ap_lo) <span className="text-[10px] text-slate-400">(40-160 mmHg)</span>
+                        Diastolic BP (ap_lo) <span className="text-[10px] text-slate-400">(40 - 160 mmHg)</span>
                       </label>
                       <input
                         type="number"
                         name="ap_lo"
-                        min="40"
-                        max="160"
+                        placeholder="e.g. 80"
                         value={formData.ap_lo}
                         onChange={handleChange}
-                        className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
+                        className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold focus:outline-none transition-all ${
+                          validationErrors.ap_lo ? t.inputError : t.input
+                        }`}
                       />
+                      {validationErrors.ap_lo && (
+                        <p className="mt-1 text-[11px] text-rose-500 font-bold flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5" /> {validationErrors.ap_lo}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -792,7 +859,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* MODEL SELECTOR DROPDOWN */}
+                  {/* MODEL SELECTOR DROPDOWN & SUBMIT */}
                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="w-full sm:w-auto flex-1">
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
@@ -827,7 +894,12 @@ export default function App() {
                     <div className="w-full sm:w-auto flex items-end">
                       <button
                         onClick={() => fetchPredictionFromBackend(formData, selectedModel)}
-                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-extrabold text-sm shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 transition-all"
+                        disabled={hasErrors || isCalculating}
+                        className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-extrabold text-sm flex items-center justify-center gap-2 transition-all ${
+                          hasErrors 
+                            ? 'bg-slate-400 dark:bg-slate-800 text-slate-200 cursor-not-allowed border border-slate-300 opacity-60' 
+                            : 'bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white shadow-lg shadow-rose-500/30'
+                        }`}
                       >
                         {isCalculating ? (
                           <>
@@ -866,11 +938,11 @@ export default function App() {
                   <div className="text-center py-4 space-y-2">
                     <div className="relative inline-flex items-center justify-center">
                       <span className={`text-6xl md:text-7xl font-extrabold tracking-tight ${riskInfo.color}`}>
-                        {riskScore.toFixed(1)}%
+                        {hasErrors ? '--' : `${riskScore.toFixed(1)}%`}
                       </span>
                     </div>
                     <p className={`text-xs sm:text-sm font-semibold max-w-xs mx-auto ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {riskInfo.desc}
+                      {hasErrors ? 'Please enter valid biometric inputs within clinical bounds.' : riskInfo.desc}
                     </p>
                   </div>
 
@@ -884,7 +956,7 @@ export default function App() {
                     <div className={`w-full h-3 rounded-full overflow-hidden p-0.5 border ${isDarkMode ? 'bg-slate-950/80 border-slate-800' : 'bg-slate-200 border-slate-300'}`}>
                       <div 
                         className={`h-full rounded-full transition-all duration-700 ${riskInfo.bar}`}
-                        style={{ width: `${Math.min(Math.max(riskScore, 5), 100)}%` }}
+                        style={{ width: `${hasErrors ? 0 : Math.min(Math.max(riskScore, 5), 100)}%` }}
                       />
                     </div>
                   </div>
@@ -926,7 +998,7 @@ export default function App() {
                   </h3>
 
                   <ul className="space-y-2.5 text-xs font-medium">
-                    {formData.ap_hi > 135 && (
+                    {Number(formData.ap_hi) > 135 && (
                       <li className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-700 dark:text-rose-300">
                         <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
                         <span>High BP ({formData.ap_hi} mmHg): Monitor sodium intake and consult a physician.</span>
@@ -1194,7 +1266,7 @@ export default function App() {
                   <Activity className="w-5 h-5" /> Mean Arterial Pressure (MAP)
                 </div>
                 <div className={`text-3xl font-extrabold ${t.heading}`}>
-                  {(((2 * formData.ap_lo) + formData.ap_hi) / 3).toFixed(1)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
+                  {(((2 * Number(formData.ap_lo)) + Number(formData.ap_hi)) / 3).toFixed(1)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
                 </div>
                 <p className={`text-xs ${t.subHeading} font-medium`}>Target range: 70 - 100 mmHg for organ perfusion.</p>
               </div>
@@ -1205,7 +1277,7 @@ export default function App() {
                   <Heart className="w-5 h-5" /> Pulse Pressure
                 </div>
                 <div className={`text-3xl font-extrabold ${t.heading}`}>
-                  {formData.ap_hi - formData.ap_lo} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
+                  {Number(formData.ap_hi) - Number(formData.ap_lo)} <span className={`text-xs ${t.subHeading} font-normal`}>mmHg</span>
                 </div>
                 <p className={`text-xs ${t.subHeading} font-medium`}>Normal range: 40 - 60 mmHg. High values indicate arterial stiffness.</p>
               </div>
