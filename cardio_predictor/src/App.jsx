@@ -202,12 +202,27 @@ export default function App() {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    const val = parseFloat(value) || 0;
+    let val = parseFloat(value);
+    if (isNaN(val)) val = 0;
+
+    // Prevent negative values completely
+    val = Math.max(0, val);
 
     setFormData((prev) => {
       let updated = { ...prev, [name]: val };
-      if (name === 'ap_lo' && val > prev.ap_hi) updated.ap_hi = val;
-      if (name === 'ap_hi' && val < prev.ap_lo) updated.ap_lo = val;
+      
+      // Enforce clinical realistic bounds
+      if (name === 'age') updated.age = Math.min(Math.max(val, 18), 100);
+      if (name === 'height') updated.height = Math.min(Math.max(val, 50), 250);
+      if (name === 'weight') updated.weight = Math.min(Math.max(val, 20), 250);
+      if (name === 'ap_hi') {
+        updated.ap_hi = Math.min(Math.max(val, 70), 240);
+        if (updated.ap_hi <= updated.ap_lo) updated.ap_lo = Math.max(40, updated.ap_hi - 10);
+      }
+      if (name === 'ap_lo') {
+        updated.ap_lo = Math.min(Math.max(val, 40), 160);
+        if (updated.ap_lo >= updated.ap_hi) updated.ap_hi = Math.min(240, updated.ap_lo + 10);
+      }
       return updated;
     });
   };
@@ -645,11 +660,13 @@ export default function App() {
                     {/* Height */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Height (cm)
+                        Height (cm) <span className="text-[10px] text-slate-400">(50-250)</span>
                       </label>
                       <input
                         type="number"
                         name="height"
+                        min="50"
+                        max="250"
                         value={formData.height}
                         onChange={handleChange}
                         className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
@@ -660,13 +677,15 @@ export default function App() {
                     <div>
                       <div className="flex justify-between items-center mb-1">
                         <label className={`text-xs font-bold ${t.subHeading} uppercase tracking-wider`}>
-                          Weight (kg)
+                          Weight (kg) <span className="text-[10px] text-slate-400">(20-250)</span>
                         </label>
                         <span className="text-xs text-indigo-500 font-bold">BMI: {bmi}</span>
                       </div>
                       <input
                         type="number"
                         name="weight"
+                        min="20"
+                        max="250"
                         value={formData.weight}
                         onChange={handleChange}
                         className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
@@ -676,11 +695,13 @@ export default function App() {
                     {/* Systolic BP */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Systolic BP (ap_hi - mmHg)
+                        Systolic BP (ap_hi) <span className="text-[10px] text-slate-400">(70-240 mmHg)</span>
                       </label>
                       <input
                         type="number"
                         name="ap_hi"
+                        min="70"
+                        max="240"
                         value={formData.ap_hi}
                         onChange={handleChange}
                         className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}
@@ -690,11 +711,13 @@ export default function App() {
                     {/* Diastolic BP */}
                     <div>
                       <label className={`block text-xs font-bold ${t.subHeading} uppercase tracking-wider mb-1`}>
-                        Diastolic BP (ap_lo - mmHg)
+                        Diastolic BP (ap_lo) <span className="text-[10px] text-slate-400">(40-160 mmHg)</span>
                       </label>
                       <input
                         type="number"
                         name="ap_lo"
+                        min="40"
+                        max="160"
                         value={formData.ap_lo}
                         onChange={handleChange}
                         className={`w-full px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none ${t.input}`}

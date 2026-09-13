@@ -29,19 +29,20 @@ def predict():
 
         data = request.get_json() or {}
 
-        features = [
-            float(data.get('age', 0)),
-            float(data.get('gender', 1)),
-            float(data.get('height', 165)),
-            float(data.get('weight', 70)),
-            float(data.get('ap_hi', 120)),
-            float(data.get('ap_lo', 80)),
-            float(data.get('cholesterol', 1)),
-            float(data.get('gluc', 1)),
-            float(data.get('smoke', 0)),
-            float(data.get('alco', 0)),
-            float(data.get('active', 1))
-        ]
+        # Sanitize and clamp features to valid positive clinical ranges
+        age = max(18.0, min(100.0, float(data.get('age', 30))))
+        gender = 1.0 if float(data.get('gender', 1)) == 1 else 2.0
+        height = max(50.0, min(250.0, float(data.get('height', 165))))
+        weight = max(20.0, min(250.0, float(data.get('weight', 70))))
+        ap_hi = max(70.0, min(240.0, float(data.get('ap_hi', 120))))
+        ap_lo = max(40.0, min(160.0, float(data.get('ap_lo', 80))))
+        cholesterol = max(1.0, min(3.0, float(data.get('cholesterol', 1))))
+        gluc = max(1.0, min(3.0, float(data.get('gluc', 1))))
+        smoke = 1.0 if float(data.get('smoke', 0)) == 1 else 0.0
+        alco = 1.0 if float(data.get('alco', 0)) == 1 else 0.0
+        active = 1.0 if float(data.get('active', 1)) == 1 else 0.0
+
+        features = [age, gender, height, weight, ap_hi, ap_lo, cholesterol, gluc, smoke, alco, active]
 
         input_array = np.array([features])
         prob = model.predict_proba(input_array)[0][1]
