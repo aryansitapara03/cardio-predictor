@@ -6,7 +6,6 @@ import numpy as np
 app = Flask(__name__)
 CORS(app)
 
-# ૧. ટ્રેન થયેલું મોડેલ અને એક્યુરેસી લોડ કરો
 with open('cardio_model.pkl', 'rb') as f:
     loaded_data = pickle.load(f)
     model = loaded_data['model']
@@ -17,7 +16,6 @@ def predict():
     try:
         data = request.get_json()
 
-        # ૨. React માંથી આવતા Features એ જ ક્રમમાં મેળવો જેમાં મોડેલ ટ્રેન થયું હતું
         features = [
             float(data.get('age', 0)),
             float(data.get('gender', 1)),
@@ -33,7 +31,7 @@ def predict():
         ]
 
         input_array = np.array([features])
-        prob = model.predict_proba(input_array)[0][1]  # Class 1 (Disease) ની શક્યતા
+        prob = model.predict_proba(input_array)[0][1]  
         risk_score = round(float(prob * 100), 1)
 
         factors = []
