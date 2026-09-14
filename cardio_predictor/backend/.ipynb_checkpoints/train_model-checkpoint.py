@@ -131,25 +131,25 @@ def run_training():
             'is_scratch': isinstance(model, ScratchLogisticRegression)
         }
 
-    # 3. Hyperparameter Tuning
+    # 3. Hyperparameter Tuning using BOTH GridSearchCV and RandomizedSearchCV
     print("\n" + "=" * 80)
     print("3. Executing Hyperparameter Tuning on Best Model (Gradient Boosting)...")
     print("=" * 80)
 
-    # 3A. Fast & Optimized GridSearchCV (24 fits instead of 270)
+    # 3A. GridSearchCV
     print("\n--> Running GridSearchCV...")
     grid_param_grid = {
-        'n_estimators': [50, 100],
-        'max_depth': [3, 5],
-        'learning_rate': [0.05, 0.1]
+        'n_estimators': [50, 100, 150],
+        'max_depth': [3, 5, 8],
+        'learning_rate': [0.03, 0.05, 0.1],
+        'subsample': [0.8, 1.0]
     }
     grid_search = GridSearchCV(
         estimator=GradientBoostingClassifier(random_state=42),
         param_grid=grid_param_grid,
-        cv=3,
+        cv=5,
         scoring='accuracy',
-        n_jobs=-1,
-        verbose=2
+        n_jobs=-1
     )
     grid_search.fit(X_train, y_train)
 
@@ -166,7 +166,7 @@ def run_training():
 
     grid_status = "Overfitting" if grid_gap > 5.0 else ("Underfitting" if grid_train_acc < 65.0 else "Good Fit (Optimal)")
 
-    print(f"\nGridSearchCV Best Params: {grid_search.best_params_}")
+    print(f"GridSearchCV Best Params: {grid_search.best_params_}")
     print(f"GridSearchCV CV Score: {round(grid_search.best_score_ * 100, 2)}% | Test Acc: {grid_test_acc}%")
 
     saved_models_dict["Gradient Boosting (GridSearch)"] = {
@@ -181,23 +181,23 @@ def run_training():
         'is_scratch': False
     }
 
-    # 3B. Fast & Optimized RandomizedSearchCV (18 fits)
+    # 3B. RandomizedSearchCV
     print("\n--> Running RandomizedSearchCV...")
     rand_param_dist = {
-        'n_estimators': [50, 75, 100, 150],
-        'max_depth': [3, 4, 5],
-        'learning_rate': [0.03, 0.05, 0.1],
-        'subsample': [0.8, 1.0]
+        'n_estimators': [50, 75, 100, 125, 150, 200],
+        'max_depth': [3, 4, 5, 6, 7, 8],
+        'learning_rate': [0.01, 0.03, 0.05, 0.08, 0.1, 0.15],
+        'subsample': [0.7, 0.8, 0.9, 1.0],
+        'min_samples_split': [2, 5, 10]
     }
     rand_search = RandomizedSearchCV(
         estimator=GradientBoostingClassifier(random_state=42),
         param_distributions=rand_param_dist,
-        n_iter=6,
-        cv=3,
+        n_iter=15,
+        cv=5,
         scoring='accuracy',
         random_state=42,
-        n_jobs=-1,
-        verbose=2
+        n_jobs=-1
     )
     rand_search.fit(X_train, y_train)
 
@@ -214,7 +214,7 @@ def run_training():
 
     rand_status = "Overfitting" if rand_gap > 5.0 else ("Underfitting" if rand_train_acc < 65.0 else "Good Fit (Optimal)")
 
-    print(f"\nRandomizedSearchCV Best Params: {rand_search.best_params_}")
+    print(f"RandomizedSearchCV Best Params: {rand_search.best_params_}")
     print(f"RandomizedSearchCV CV Score: {round(rand_search.best_score_ * 100, 2)}% | Test Acc: {rand_test_acc}%")
 
     saved_models_dict["Gradient Boosting (RandomSearch)"] = {
@@ -229,7 +229,6 @@ def run_training():
         'is_scratch': False
     }
 
-    # 4. Identify Best Model & Save
     best_acc = 0.0
     best_model_name = ""
 
