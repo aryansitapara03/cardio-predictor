@@ -20,6 +20,26 @@ except Exception as e:
     model_accuracy = 72.84
     print(f"Error loading model: {e}")
 
+MODELS_BENCHMARK = [
+    {"name": "Gradient Boosting", "accuracy": 73.01, "precision": 75.17, "recall": 68.23, "f1": 71.53, "is_best": True, "speed": "12ms"},
+    {"name": "Random Forest", "accuracy": 72.70, "precision": 75.55, "recall": 66.63, "f1": 70.81, "speed": "18ms"},
+    {"name": "Logistic Regression", "accuracy": 72.39, "precision": 75.18, "recall": 66.35, "f1": 70.49, "speed": "5ms"},
+    {"name": "Scratch Logistic Reg", "accuracy": 72.49, "precision": 75.25, "recall": 66.51, "f1": 70.61, "speed": "8ms"},
+    {"name": "Extra Trees", "accuracy": 72.51, "precision": 74.82, "recall": 67.35, "f1": 70.89, "speed": "22ms"},
+    {"name": "AdaBoost", "accuracy": 72.49, "precision": 76.40, "recall": 64.59, "f1": 70.00, "speed": "15ms"},
+    {"name": "Decision Tree", "accuracy": 71.95, "precision": 73.96, "recall": 67.21, "f1": 70.43, "speed": "4ms"},
+    {"name": "Naive Bayes", "accuracy": 70.57, "precision": 75.75, "recall": 59.98, "f1": 66.95, "speed": "3ms"}
+]
+
+@app.route('/api/models', methods=['GET'])
+@app.route('/models', methods=['GET'])
+def get_models():
+    return jsonify({
+        'success': True,
+        'models': MODELS_BENCHMARK,
+        'best_model': 'Gradient Boosting'
+    })
+
 @app.route('/api/predict', methods=['POST'])
 @app.route('/predict', methods=['POST'])
 def predict():

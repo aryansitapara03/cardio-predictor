@@ -227,6 +227,7 @@ export default function App() {
           setAvailableModels(data.models);
           const topModel = data.best_model || data.default || data.models[0].name;
           setBestModelName(topModel);
+          setApiConnected(true);
         }
       })
       .catch(() => setApiConnected(false));

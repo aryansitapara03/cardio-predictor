@@ -7,6 +7,14 @@
     {
       "source": "/api/predict",
       "destination": "/api/index.py"
+    },
+    {
+      "source": "/models",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/api/models",
+      "destination": "/api/index.py"
     }
   ]
 }
